@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Sheet Maker</title>
+<meta name="description" content="Rename, resize and watermark renders and build a contact sheet PDF for design reviews, in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/tool.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<nav><div class="wrap">
+  <a href="../">← Adhiraj Madan</a>
+  <a href="https://github.com/Subzero-005/review-sheet-maker" target="_blank" rel="noopener">Source on GitHub</a>
+</div></nav>
+
+<header class="wrap">
+  <div class="eyebrow">Live tool · Design reviews</div>
+  <h1>Review Sheet Maker</h1>
+  <p class="lede">Before every design review: rename renders to the team convention, resize them, stamp a confidential watermark and build a print-ready contact sheet, all in one click.</p>
+  <span class="privacy">🔒 Runs entirely in your browser. Renders are never uploaded.</span>
+</header>
+
+<main class="wrap layout">
+  <aside class="panel">
+    <h2>Inputs</h2>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Add renders">
+      <b>Drop renders here</b><br>or click to choose
+      <input type="file" id="files" accept="image/*" multiple hidden>
+    </div>
+    <button class="link-btn" id="samples">Load sample renders</button>
+
+    <div class="row">
+      <div><label for="project">Project</label><input type="text" id="project" value="Scooter-X"></div>
+      <div><label for="stage">Stage</label><input type="text" id="stage" value="Concept"></div>
+    </div>
+    <label for="version">Version</label>
+    <input type="number" id="version" value="1" min="1" max="99">
+    <label for="pattern">Naming pattern <small>{project} {stage} {n} {version} {original} {date}</small></label>
+    <input type="text" id="pattern" value="{project}_{stage}_{n}_v{version}">
+    <div class="row">
+      <div>
+        <label for="size">Longest edge</label>
+        <select id="size"><option value="0">Original</option><option>1080</option><option>1920</option><option selected>2400</option><option>3840</option></select>
+      </div>
+      <div>
+        <label for="fmt">Format</label>
+        <select id="fmt"><option value="jpeg">JPG</option><option value="png">PNG</option><option value="webp">WEBP</option></select>
+      </div>
+    </div>
+    <label for="watermark">Watermark <small>(leave empty for none)</small></label>
+    <input type="text" id="watermark" value="CONFIDENTIAL">
+    <label for="cols">Images per row on the sheet <small id="colsV">3</small></label>
+    <input type="range" id="cols" min="2" max="4" value="3">
+    <button class="btn primary" id="run" disabled>Export review pack</button>
+    <div class="status" id="status" style="margin-top:10px"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="panel scroll">
+      <h2>Name preview</h2>
+      <table><thead><tr><th>#</th><th>Original</th><th>New name</th></tr></thead><tbody id="names"></tbody></table>
+    </div>
+    <div class="actions">
+      <button class="btn" id="dlZip" disabled>Download ZIP</button>
+      <button class="btn" id="dlPdf" disabled>Download contact sheet PDF</button>
+    </div>
+    <div class="grid-out" id="out"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var SAMPLES = ["graphite-orange.jpg", "white-petrol.jpg", "olive-sand.jpg", "red-car-night.jpg", "scooter-sketch-01.png"]
+    .map(function (f) { return "../assets/samples/" + f; });
+  var EXT = { jpeg: ".jpg", png: ".png", webp: ".webp" };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var inputs = [];   // {name, blob}
+  var outputs = [];  // {name, blob, url, width, height}
+
+  function slug(t) { return (t || "").trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled"; }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function today() { var d = new Date(); return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); }
+
+  function buildNames() {
+    var used = {};
+    return inputs.map(function (f, i) {
+      var name = $("pattern").value
+        .replace(/\{project\}/g, slug($("project").value))
+        .replace(/\{stage\}/g, slug($("stage").value))
+        .replace(/\{n\}/g, pad(i + 1))
+        .replace(/\{version\}/g, pad(+$("version").value || 1))
+        .replace(/\{original\}/g, slug(f.name.replace(/\.[^.]+$/, "")))
+        .replace(/\{date\}/g, today());
+      name = name.replace(/[\\/:*?"<>|]/g, "-") || "image";
+      var candidate = name, k = 2;
+      while (used[candidate]) candidate = name + "_" + k++;  // never overwrite inside the zip
+      used[candidate] = 1;
+      return candidate + EXT[$("fmt").value];
+    });
+  }
+
+  function renderNames() {
+    var names = buildNames();
+    $("names").innerHTML = inputs.map(function (f, i) {
+      return "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(f.name) + "</td><td><b>" + escapeHtml(names[i]) + "</b></td></tr>";
+    }).join("") || "<tr><td colspan='3' style='color:var(--muted)'>Add some renders to see their new names.</td></tr>";
+    $("run").disabled = !inputs.length;
+  }
+  function escapeHtml(s) { return s.replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  function watermark(ctx, w, h, text) {
+    var size = Math.max(18, Math.round(w / 14));
+    ctx.save();
+    ctx.font = "700 " + size + "px Inter, Arial, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.24)";
+    ctx.textBaseline = "middle";
+    var tw = ctx.measureText(text).width, step = tw + size * 2;
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(-Math.PI / 6);
+    var reach = Math.hypot(w, h);
+    for (var row = 0, y = -reach / 2; y < reach / 2; y += size * 3, row++) {
+      for (var x = -reach / 2 + (row % 2 ? step / 2 : 0); x < reach / 2; x += step) {
+        ctx.strokeStyle = "rgba(0,0,0,0.10)"; ctx.lineWidth = Math.max(1, size / 24);
+        ctx.strokeText(text, x, y); ctx.fillText(text, x, y);
+      }
+    }
+    ctx.restore();
+    var small = Math.max(12, Math.round(w / 60));
+    ctx.font = "600 " + small + "px Inter, Arial, sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.textBaseline = "bottom";
+    ctx.fillText(text, 16, h - 14);
+  }
+
+  async function processOne(file, name, opts) {
+    // createImageBitmap applies the photo's EXIF rotation, so phone shots come out upright
+    var bmp = await createImageBitmap(file.blob, { imageOrientation: "from-image" });
+    var scale = opts.size && Math.max(bmp.width, bmp.height) > opts.size ? opts.size / Math.max(bmp.width, bmp.height) : 1;
+    var w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+    var cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    var ctx = cv.getContext("2d");
+    if (opts.fmt === "jpeg") { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); }  // transparent PNG → white, not black
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close && bmp.close();
+    if (opts.watermark) watermark(ctx, w, h, opts.watermark);
+    var blob = await new Promise(function (r) { cv.toBlob(r, "image/" + opts.fmt, 0.92); });
+    return { name: name, blob: blob, url: URL.createObjectURL(blob), width: w, height: h };
+  }
+
+  async function run() {
+    if (!inputs.length) return;
+    $("run").disabled = true;
+    outputs.forEach(function (o) { URL.revokeObjectURL(o.url); });
+    outputs = [];
+    var names = buildNames();
+    var opts = { size: +$("size").value, fmt: $("fmt").value, watermark: $("watermark").value.trim() };
+    var failed = 0;
+    for (var i = 0; i < inputs.length; i++) {
+      $("status").textContent = "Processing " + (i + 1) + " of " + inputs.length + "…";
+      try { outputs.push(await processOne(inputs[i], names[i], opts)); } catch (e) { failed++; }
+    }
+    $("out").innerHTML = outputs.map(function (o) {
+      return "<figure><img src='" + o.url + "' alt=''><figcaption>" + escapeHtml(o.name) + " · " + o.width + "×" + o.height + "</figcaption></figure>";
+    }).join("");
+    $("dlZip").disabled = $("dlPdf").disabled = !outputs.length;
+    $("status").textContent = "Exported " + outputs.length + " image" + (outputs.length === 1 ? "" : "s") +
+      (failed ? " (" + failed + " unreadable, skipped)" : "") + ".";
+    $("run").disabled = false;
+    document.body.setAttribute("data-ready", "1");
+  }
+
+  function packName() { return slug($("project").value) + "_" + slug($("stage").value) + "_v" + pad(+$("version").value || 1); }
+  function save(name, blob) { var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
+
+  async function makeZip() {
+    var zip = new JSZip();
+    outputs.forEach(function (o) { zip.file(o.name, o.blob); });
+    save(packName() + ".zip", await zip.generateAsync({ type: "blob" }));
+  }
+
+  function blobToDataUrl(blob) {
+    return new Promise(function (r) { var fr = new FileReader(); fr.onload = function () { r(fr.result); }; fr.readAsDataURL(blob); });
+  }
+
+  async function makeSheet() {
+    var cols = +$("cols").value, rows = cols <= 3 ? 2 : 3, per = cols * rows;
+    var pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    var W = 297, H = 210, M = 12, G = 6, HEAD = 22, CAP = 8;
+    var cw = (W - 2 * M - (cols - 1) * G) / cols, ch = (H - 2 * M - HEAD - (rows - 1) * G) / rows - CAP;
+    var pages = Math.max(1, Math.ceil(outputs.length / per));
+    var title = $("project").value + " — " + $("stage").value + " review (v" + pad(+$("version").value || 1) + ")";
+    var dateText = new Date().toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+    for (var p = 0; p < pages; p++) {
+      if (p) pdf.addPage();
+      pdf.setFont("helvetica", "bold"); pdf.setFontSize(18); pdf.setTextColor(25, 25, 28);
+      pdf.text(title, M, M + 6);
+      pdf.setFont("helvetica", "normal"); pdf.setFontSize(9.5); pdf.setTextColor(120, 120, 125);
+      pdf.text(dateText + "  ·  page " + (p + 1) + " of " + pages + "  ·  " + outputs.length + " images", M, M + 13);
+      var slice = outputs.slice(p * per, (p + 1) * per);
+      for (var i = 0; i < slice.length; i++) {
+        var o = slice[i], r = Math.floor(i / cols), c = i % cols;
+        var x = M + c * (cw + G), y = M + HEAD + r * (ch + CAP + G);
+        pdf.setFillColor(243, 243, 241); pdf.rect(x, y, cw, ch, "F");
+        var s = Math.min(cw / o.width, ch / o.height), w = o.width * s, h = o.height * s;
+        // re-encode as JPEG so the PDF stays small whatever the export format was
+        var jpg = await toJpegDataUrl(o);
+        pdf.addImage(jpg, "JPEG", x + (cw - w) / 2, y + (ch - h) / 2, w, h);
+        pdf.setFont("helvetica", "bold"); pdf.setFontSize(9); pdf.setTextColor(40, 40, 44);
+        pdf.text(pad(p * per + i + 1) + "  " + o.name, x, y + ch + 5, { maxWidth: cw });
+      }
+    }
+    save(packName() + "_review.pdf", pdf.output("blob"));
+  }
+
+  async function toJpegDataUrl(o) {
+    var bmp = await createImageBitmap(o.blob);
+    var scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    var cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * scale); cv.height = Math.round(bmp.height * scale);
+    var ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+    return cv.toDataURL("image/jpeg", 0.85);
+  }
+
+  function addFiles(list) {
+    var files = Array.prototype.filter.call(list, function (f) { return f.type.indexOf("image/") === 0; });
+    if (!files.length) return;
+    inputs = files.map(function (f) { return { name: f.name, blob: f }; });
+    renderNames(); run();
+  }
+
+  async function loadSamples() {
+    $("status").textContent = "Loading samples…";
+    try {
+      inputs = await Promise.all(SAMPLES.map(async function (u) {
+        var res = await fetch(u); if (!res.ok) throw new Error("Could not load " + u);
+        return { name: u.split("/").pop(), blob: await res.blob() };
+      }));
+      renderNames(); await run();
+    } catch (e) { $("status").textContent = e.message; }
+  }
+
+  $("drop").addEventListener("click", function () { $("files").click(); });
+  $("drop").addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("files").click(); } });
+  $("files").addEventListener("change", function (e) { addFiles(e.target.files); });
+  ["dragenter", "dragover"].forEach(function (ev) { $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.remove("over"); }); });
+  $("drop").addEventListener("drop", function (e) { addFiles(e.dataTransfer.files); });
+  $("samples").addEventListener("click", loadSamples);
+  ["project", "stage", "version", "pattern", "fmt"].forEach(function (id) { $(id).addEventListener("input", renderNames); });
+  $("cols").addEventListener("input", function () { $("colsV").textContent = $("cols").value; });
+  $("run").addEventListener("click", run);
+  $("dlZip").addEventListener("click", makeZip);
+  $("dlPdf").addEventListener("click", function () {
+    $("status").textContent = "Building contact sheet…";
+    makeSheet().then(function () { $("status").textContent = "Contact sheet ready."; });
+  });
+
+  renderNames();
+  // show a finished example straight away so the page is never empty
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(loadSamples);
+
+})();
+</script>
+</body>
+</html>

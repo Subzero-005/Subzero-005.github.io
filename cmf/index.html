@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMF Palette Studio</title>
+<meta name="description" content="Turn reference photos into a named CMF colour board, right in the browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/tool.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<nav><div class="wrap">
+  <a href="../">← Adhiraj Madan</a>
+  <a href="https://github.com/Subzero-005/cmf-palette-studio" target="_blank" rel="noopener">Source on GitHub</a>
+</div></nav>
+
+<header class="wrap">
+  <div class="eyebrow">Live tool · CMF</div>
+  <h1>CMF Palette Studio</h1>
+  <p class="lede">Drop in reference photos, such as competitor products, mood shots or material samples, and get a ready-to-share colour board with named swatches and finish hints. No more eyedropping by hand.</p>
+  <span class="privacy">🔒 Runs entirely in your browser. Images are never uploaded.</span>
+</header>
+
+<main class="wrap layout">
+  <aside class="panel">
+    <h2>Inputs</h2>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Add reference images">
+      <b>Drop images here</b><br>or click to choose
+      <input type="file" id="files" accept="image/*" multiple hidden>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <button class="link-btn" id="samples">Load sample scooter references</button>
+
+    <label for="title">Board title</label>
+    <input type="text" id="title" value="Urban Scooter – Colour Exploration">
+    <label for="perImage">Colours per image <small id="perImageV">5</small></label>
+    <input type="range" id="perImage" min="2" max="10" value="5">
+    <label for="boardColours">Colours on board <small id="boardColoursV">7</small></label>
+    <input type="range" id="boardColours" min="3" max="10" value="7">
+    <button class="btn primary" id="run">Build board</button>
+    <div class="status" id="status" style="margin-top:10px"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="canvas-box"><canvas id="board" width="1600" height="800" aria-label="Colour board"></canvas></div>
+    <div class="actions">
+      <button class="btn" id="dlPng" disabled>Download PNG</button>
+      <button class="btn" id="dlPdf" disabled>Download PDF</button>
+      <button class="btn" id="dlJson" disabled>Download JSON</button>
+    </div>
+    <div class="panel scroll">
+      <table>
+        <thead><tr><th>Swatch</th><th>Name</th><th>Share</th><th>Finish hint</th><th>RGB</th></tr></thead>
+        <tbody id="table"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var NAMES = {
+    "Jet Black": [16, 16, 18], "Graphite": [54, 57, 62], "Gunmetal": [83, 87, 94], "Titanium Grey": [122, 125, 130],
+    "Cool Silver": [176, 180, 186], "Light Grey": [212, 215, 220], "Warm Grey": [200, 196, 188], "Pebble": [168, 162, 150],
+    "Cloud White": [236, 238, 240], "Off White": [232, 229, 220], "Ivory": [240, 234, 214], "Sand": [204, 186, 150],
+    "Khaki": [156, 142, 104], "Olive Drab": [96, 102, 60], "Forest Green": [34, 85, 52], "Mint": [170, 220, 196],
+    "Teal": [0, 128, 128], "Petrol Blue": [24, 72, 92], "Navy": [20, 34, 74], "Cobalt": [0, 71, 171],
+    "Sky Blue": [120, 180, 230], "Lavender": [180, 164, 214], "Plum": [96, 48, 86], "Burgundy": [110, 22, 40],
+    "Racing Red": [196, 30, 40], "Coral": [240, 120, 100], "Copper": [184, 115, 51], "Burnt Orange": [204, 85, 0],
+    "Signal Orange": [245, 130, 32], "Mustard": [214, 170, 40], "Lemon": [245, 225, 80], "Bronze": [140, 110, 60],
+    "Chocolate": [88, 56, 38], "Tan Leather": [166, 112, 72], "Blush": [232, 190, 186]
+  };
+  var SAMPLES = ["graphite-orange.jpg", "white-petrol.jpg", "olive-sand.jpg"].map(function (f) { return "../assets/samples/" + f; });
+  var SAMPLE_SIZE = 160;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var images = [];   // HTMLImageElement[]
+  var palette = [];  // {rgb, share}
+
+  // ---------- colour maths ----------
+
+  function hex(rgb) { return "#" + rgb.map(function (c) { return c.toString(16).padStart(2, "0"); }).join("").toUpperCase(); }
+
+  function nearestName(rgb) {
+    var best = null, bestD = Infinity;
+    for (var n in NAMES) {
+      var c = NAMES[n], d = (c[0] - rgb[0]) ** 2 + (c[1] - rgb[1]) ** 2 + (c[2] - rgb[2]) ** 2;
+      if (d < bestD) { bestD = d; best = n; }
+    }
+    return best;
+  }
+
+  function finishHint(rgb) {
+    var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+    var hi = Math.max(r, g, b), lo = Math.min(r, g, b), l = (hi + lo) / 2;
+    var s = hi === lo ? 0 : (hi - lo) / (1 - Math.abs(2 * l - 1));
+    if (s < 0.12 && l > 0.35 && l < 0.8) return "metallic / satin";
+    if (l < 0.2) return "gloss or matte black";
+    if (s > 0.6) return "gloss accent";
+    return "matte / textured";
+  }
+
+  // small seeded RNG so the same images always give the same board
+  function rng(seed) { return function () { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+  // weighted k-means with k-means++ seeding; points: [[r,g,b]], weights: [w]
+  function kmeans(points, weights, k, iterations) {
+    var rand = rng(42), n = points.length;
+    var unique = {};
+    points.forEach(function (p) { unique[p.join()] = 1; });
+    k = Math.max(1, Math.min(k, Object.keys(unique).length));
+    var centres = [points[Math.floor(rand() * n)].slice()];
+    var dist = new Float64Array(n);
+    while (centres.length < k) {
+      var total = 0;
+      for (var i = 0; i < n; i++) {
+        var m = Infinity;
+        for (var c = 0; c < centres.length; c++) m = Math.min(m, d2(points[i], centres[c]));
+        dist[i] = m * weights[i]; total += dist[i];
+      }
+      var t = rand() * total, idx = 0;
+      while (idx < n - 1 && (t -= dist[idx]) > 0) idx++;
+      centres.push(points[idx].slice());
+    }
+    var labels = new Int32Array(n);
+    for (var it = 0; it < (iterations || 25); it++) {
+      var sums = centres.map(function () { return [0, 0, 0, 0]; }), moved = false;
+      for (var p = 0; p < n; p++) {
+        var bi = 0, bd = Infinity;
+        for (var q = 0; q < k; q++) { var dd = d2(points[p], centres[q]); if (dd < bd) { bd = dd; bi = q; } }
+        if (labels[p] !== bi) { labels[p] = bi; moved = true; }
+        var s = sums[bi], w = weights[p];
+        s[0] += points[p][0] * w; s[1] += points[p][1] * w; s[2] += points[p][2] * w; s[3] += w;
+      }
+      sums.forEach(function (s, j) { if (s[3] > 0) centres[j] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]]; });
+      if (!moved && it > 0) break;
+    }
+    var shares = centres.map(function () { return 0; });
+    for (var z = 0; z < n; z++) shares[labels[z]] += weights[z];
+    var totalW = shares.reduce(function (a, b) { return a + b; }, 0);
+    return centres
+      .map(function (c, j) { return { rgb: c.map(Math.round), share: shares[j] / totalW }; })
+      .filter(function (s) { return s.share > 0; })
+      .sort(function (a, b) { return b.share - a.share; });
+  }
+  function d2(a, b) { return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2; }
+
+  function pixelsOf(img) {
+    var scale = Math.min(1, SAMPLE_SIZE / Math.max(img.naturalWidth, img.naturalHeight));
+    var w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+    var c = document.createElement("canvas"); c.width = w; c.height = h;
+    var ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    var data = ctx.getImageData(0, 0, w, h).data, out = [];
+    for (var i = 0; i < data.length; i += 4) {
+      if (data[i + 3] > 128) out.push([data[i], data[i + 1], data[i + 2]]); // skip transparent pixels
+    }
+    return out;
+  }
+
+  function buildPalette(perImage, boardColours) {
+    var all = [];
+    images.forEach(function (img) {
+      var px = pixelsOf(img);
+      if (!px.length) return;
+      var w = new Float64Array(px.length).fill(1);
+      all = all.concat(kmeans(px, w, perImage));
+    });
+    if (all.length <= boardColours) {
+      var t = all.reduce(function (a, s) { return a + s.share; }, 0);
+      return all.map(function (s) { return { rgb: s.rgb, share: s.share / t }; }).sort(function (a, b) { return b.share - a.share; });
+    }
+    return kmeans(all.map(function (s) { return s.rgb; }), all.map(function (s) { return s.share; }), boardColours, 50);
+  }
+
+  // ---------- board rendering ----------
+
+  function drawBoard(title) {
+    var W = 1600, M = 48, TH = 260, SH = 220, hasImg = images.length > 0;
+    var H = M * 2 + 70 + (hasImg ? TH + M : 0) + SH + 110;
+    var cv = $("board"); cv.width = W; cv.height = H;
+    var ctx = cv.getContext("2d");
+    ctx.fillStyle = "#FAFAF8"; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#1E1E20"; ctx.font = "700 40px Inter, Arial, sans-serif";
+    ctx.fillText(title, M, M);
+
+    var y = M + 70;
+    if (hasImg) {
+      var cols = Math.min(images.length, 6), cw = Math.floor((W - M * 2 - (cols - 1) * 16) / cols);
+      images.slice(0, cols).forEach(function (img, i) {
+        var s = Math.min(cw / img.naturalWidth, TH / img.naturalHeight);
+        var w = img.naturalWidth * s, h = img.naturalHeight * s;
+        ctx.drawImage(img, M + i * (cw + 16) + (cw - w) / 2, y + (TH - h) / 2, w, h);
+      });
+      y += TH + M;
+    }
+    if (palette.length) {
+      // every swatch gets a minimum width so small accents stay visible
+      var usable = W - M * 2, minW = Math.min(150, Math.floor(usable / palette.length));
+      var extra = usable - minW * palette.length, x = M;
+      palette.forEach(function (sw, i) {
+        var w = i === palette.length - 1 ? M + usable - x : minW + Math.floor(extra * sw.share);
+        ctx.fillStyle = hex(sw.rgb); ctx.fillRect(x, y, w, SH);
+        var lum = 0.299 * sw.rgb[0] + 0.587 * sw.rgb[1] + 0.114 * sw.rgb[2];
+        ctx.fillStyle = lum > 150 ? "#1E1E20" : "#F5F5F5";
+        ctx.font = "700 22px Inter, Arial, sans-serif"; ctx.fillText(hex(sw.rgb), x + 12, y + 12);
+        ctx.font = "400 18px Inter, Arial, sans-serif"; ctx.fillText(Math.round(sw.share * 100) + "%", x + 12, y + 42);
+        ctx.fillStyle = "#1E1E20"; ctx.font = "700 20px Inter, Arial, sans-serif";
+        ctx.fillText(nearestName(sw.rgb), x + 12, y + SH + 12, w - 16);
+        ctx.fillStyle = "#6E6E73"; ctx.font = "400 16px Inter, Arial, sans-serif";
+        ctx.fillText(finishHint(sw.rgb), x + 12, y + SH + 40, w - 16);
+        x += w;
+      });
+    }
+  }
+
+  function renderTable() {
+    $("table").innerHTML = palette.map(function (s) {
+      return "<tr><td><span class='dot' style='background:" + hex(s.rgb) + "'></span>" + hex(s.rgb) + "</td><td>" +
+        nearestName(s.rgb) + "</td><td>" + (s.share * 100).toFixed(1) + "%</td><td>" + finishHint(s.rgb) +
+        "</td><td>" + s.rgb.join(", ") + "</td></tr>";
+    }).join("");
+  }
+
+  // ---------- inputs ----------
+
+  function loadImage(src) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onload = function () { resolve(img); };
+      img.onerror = function () { reject(new Error("Could not read " + src)); };
+      img.src = src;
+    });
+  }
+
+  function setImages(list) {
+    images = list;
+    $("thumbs").innerHTML = "";
+    images.forEach(function (img) { var t = new Image(); t.src = img.src; $("thumbs").appendChild(t); });
+  }
+
+  function addFiles(fileList) {
+    var files = Array.prototype.filter.call(fileList, function (f) { return f.type.indexOf("image/") === 0; });
+    if (!files.length) return;
+    Promise.allSettled(files.map(function (f) { return loadImage(URL.createObjectURL(f)); })).then(function (res) {
+      var ok = res.filter(function (r) { return r.status === "fulfilled"; }).map(function (r) { return r.value; });
+      setImages(ok);
+      $("status").textContent = ok.length + " image" + (ok.length === 1 ? "" : "s") + " loaded" +
+        (ok.length < files.length ? " (" + (files.length - ok.length) + " unreadable, skipped)" : "") + ".";
+      run();
+    });
+  }
+
+  function run() {
+    if (!images.length) { $("status").textContent = "Add at least one reference image."; return; }
+    $("status").textContent = "Extracting colours…";
+    setTimeout(function () {
+      var t0 = performance.now();
+      palette = buildPalette(+$("perImage").value, +$("boardColours").value);
+      drawBoard($("title").value || "CMF Board");
+      renderTable();
+      ["dlPng", "dlPdf", "dlJson"].forEach(function (id) { $(id).disabled = !palette.length; });
+      $("status").textContent = "Board built from " + images.length + " image" + (images.length === 1 ? "" : "s") +
+        " in " + Math.round(performance.now() - t0) + " ms.";
+      document.body.setAttribute("data-ready", "1");
+    }, 10);
+  }
+
+  function download(name, url) { var a = document.createElement("a"); a.href = url; a.download = name; a.click(); }
+  function fileBase() { return ($("title").value || "cmf-board").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "cmf-board"; }
+
+  $("drop").addEventListener("click", function () { $("files").click(); });
+  $("drop").addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("files").click(); } });
+  $("files").addEventListener("change", function (e) { addFiles(e.target.files); });
+  ["dragenter", "dragover"].forEach(function (ev) { $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (ev) { $("drop").addEventListener(ev, function (e) { e.preventDefault(); $("drop").classList.remove("over"); }); });
+  $("drop").addEventListener("drop", function (e) { addFiles(e.dataTransfer.files); });
+  $("samples").addEventListener("click", loadSamples);
+  $("run").addEventListener("click", run);
+  [["perImage", "perImageV"], ["boardColours", "boardColoursV"]].forEach(function (p) {
+    $(p[0]).addEventListener("input", function () { $(p[1]).textContent = $(p[0]).value; });
+    $(p[0]).addEventListener("change", run);
+  });
+
+  $("dlPng").addEventListener("click", function () { download(fileBase() + ".png", $("board").toDataURL("image/png")); });
+  $("dlJson").addEventListener("click", function () {
+    var data = palette.map(function (s) {
+      return { hex: hex(s.rgb), rgb: s.rgb, name: nearestName(s.rgb), share: +s.share.toFixed(4), finish_hint: finishHint(s.rgb) };
+    });
+    download(fileBase() + ".json", URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })));
+  });
+  $("dlPdf").addEventListener("click", function () {
+    var cv = $("board"), pdf = new window.jspdf.jsPDF({ orientation: "landscape", unit: "px", format: [cv.width, cv.height] });
+    pdf.addImage(cv.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, cv.width, cv.height);
+    pdf.save(fileBase() + ".pdf");
+  });
+
+  function loadSamples() {
+    $("status").textContent = "Loading samples…";
+    Promise.all(SAMPLES.map(loadImage)).then(function (list) { setImages(list); run(); })
+      .catch(function (e) { $("status").textContent = e.message; });
+  }
+
+  // show a finished example straight away so the page is never empty
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(loadSamples); else loadSamples();
+})();
+</script>
+</body>
+</html>
