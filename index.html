@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adhiraj Madan — Tools for Designers</title>
+<meta name="description" content="Adhiraj Madan — engineer building simple, AI-powered tools that remove friction from design workflows.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #fafaf8; --surface: #ffffff; --ink: #1c1c1f; --muted: #6b6b72; --line: #e6e6e3;
+    --accent: #f5821f; --accent-ink: #b85a0a; --chip: #f1f1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121214; --surface: #1b1b1e; --ink: #ededee; --muted: #9c9ca3; --line: #2c2c31;
+      --accent: #f5821f; --accent-ink: #ffa557; --chip: #25252a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121214; --surface: #1b1b1e; --ink: #ededee; --muted: #9c9ca3; --line: #2c2c31;
+    --accent: #f5821f; --accent-ink: #ffa557; --chip: #25252a;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, system-ui, -apple-system, sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  nav .name { font-weight: 700; text-decoration: none; }
+  nav .links { display: flex; gap: 22px; font-size: 14px; }
+  nav .links a { text-decoration: none; color: var(--muted); }
+  nav .links a:hover { color: var(--ink); }
+
+  header { padding: 96px 0 72px; }
+  .eyebrow { color: var(--accent-ink); font-weight: 600; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; }
+  h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.08; letter-spacing: -0.02em; margin: 14px 0 22px; max-width: 860px; }
+  h1 span { color: var(--accent); }
+  .lede { font-size: 19px; color: var(--muted); max-width: 680px; margin: 0 0 30px; }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 10px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid var(--line); background: var(--surface); }
+  .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn:hover { transform: translateY(-1px); }
+
+  section { padding: 64px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 30px; letter-spacing: -0.01em; margin: 0 0 8px; }
+  .section-lede { color: var(--muted); margin: 0 0 40px; max-width: 680px; }
+
+  .process { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .step { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .step b { display: block; color: var(--accent-ink); font-size: 13px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .tool { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; margin-bottom: 72px; }
+  .tool:nth-child(even) .shot { order: 2; }
+  .shot { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 10px; }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 10px; }
+  .tool h3 { font-size: 24px; margin: 6px 0 12px; }
+  .label { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 18px 0 4px; }
+  .tool p { margin: 0; }
+  .tool ul { margin: 0; padding-left: 18px; }
+  .tool li { margin: 3px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 3px 11px; font-size: 13px; color: var(--muted); }
+  .tool .btn { margin-top: 4px; }
+
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; text-decoration: none; display: flex; flex-direction: column; transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card h3 { margin: 0 0 8px; font-size: 19px; }
+  .card p { margin: 0 0 14px; color: var(--muted); font-size: 15px; flex: 1; }
+  .card .chips { margin: 0; }
+
+  .about { display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; }
+  .facts { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .facts div { padding: 8px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; font-size: 15px; }
+  .facts div:last-child { border-bottom: 0; }
+  .facts span { color: var(--muted); }
+
+  footer { padding: 56px 0 72px; border-top: 1px solid var(--line); }
+  footer h2 { margin-bottom: 16px; }
+  .theme-toggle { background: none; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; cursor: pointer; color: var(--muted); font: inherit; font-size: 13px; }
+
+  @media (max-width: 820px) {
+    nav .links a.hide-sm { display: none; }
+    .process { grid-template-columns: 1fr 1fr; }
+    .tool, .about { grid-template-columns: 1fr; gap: 22px; }
+    .tool:nth-child(even) .shot { order: 0; }
+    .grid { grid-template-columns: 1fr; }
+    header { padding: 64px 0 48px; }
+  }
+  @media (max-width: 480px) {
+    .wrap { padding: 0 16px; }
+    .process { grid-template-columns: 1fr; }
+    nav .links { gap: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="name" href="#">Adhiraj Madan</a>
+    <div class="links">
+      <a href="#tools">Design tools</a>
+      <a href="#ai" class="hide-sm">AI work</a>
+      <a href="#engineering" class="hide-sm">Engineering</a>
+      <a href="#contact">Contact</a>
+      <button class="theme-toggle" id="theme" aria-label="Toggle dark mode">◐</button>
+    </div>
+  </div>
+</nav>
+
+<header class="wrap">
+  <div class="eyebrow">Engineer · AI · Tools for designers</div>
+  <h1>I build simple tools that take the <span>busywork</span> out of design.</h1>
+  <p class="lede">
+    Designers lose hours to the same chores: eyedropping colours, hunting through render folders and assembling
+    review decks. I find those friction points and build small, focused tools, AI-powered where it actually
+    helps, that give that time back.
+  </p>
+  <div class="cta">
+    <a class="btn primary" href="#tools">See the tools ↓</a>
+    <a class="btn" href="https://github.com/Subzero-005" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn" href="https://www.linkedin.com/in/adhiraj-madan-151016289/" target="_blank" rel="noopener">LinkedIn</a>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2>How I approach a tool</h2>
+    <p class="section-lede">Every tool here starts from a real step in a designer's day, not from a technology looking for a use.</p>
+    <div class="process">
+      <div class="step"><b>1 · Observe</b><p>Find the repetitive, error-prone step that steals time from actual design.</p></div>
+      <div class="step"><b>2 · Simplify</b><p>Pick the smallest tool that removes it. Use AI only where rules can't do the job.</p></div>
+      <div class="step"><b>3 · Ship</b><p>A one-click web UI that designers can use without touching code, plus tests so it keeps working.</p></div>
+      <div class="step"><b>4 · Document</b><p>A README that explains the problem, shows the result and gets someone started in two minutes.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="wrap">
+    <h2>Tools for designers</h2>
+    <p class="section-lede">Three working tools, each aimed at a specific friction point in the industrial design and CMF workflow.</p>
+
+    <article class="tool">
+      <div class="shot"><img src="assets/cmf-board.png" alt="A CMF colour board generated from three scooter reference images, with named swatches and finish hints" loading="lazy"></div>
+      <div>
+        <div class="eyebrow">CMF · Colour</div>
+        <h3>CMF Palette Studio</h3>
+        <div class="label">Friction</div>
+        <p>Building a colourway starts with eyedropping dozens of reference photos by hand and retyping hex codes into a deck.</p>
+        <div class="label">Tool</div>
+        <ul>
+          <li>Drop in reference photos and get a merged, named colour board in seconds</li>
+          <li>Hex codes, palette share, CMF-style names and a finish hint for each swatch</li>
+          <li>Small accent colours are never dropped from the board</li>
+          <li>Exports PNG for Slack, PDF for print and JSON for reuse in other tools</li>
+        </ul>
+        <div class="chips"><span class="chip">Python</span><span class="chip">k-means clustering</span><span class="chip">Pillow</span><span class="chip">Gradio</span></div>
+        <a class="btn" href="https://github.com/Subzero-005/cmf-palette-studio" target="_blank" rel="noopener">View project →</a>
+      </div>
+    </article>
+
+    <article class="tool">
+      <div class="shot"><img src="assets/asset-search.png" alt="Text searches such as 'pencil sketch on paper' and 'leather texture' returning the matching images" loading="lazy"></div>
+      <div>
+        <div class="eyebrow">AI · Search</div>
+        <h3>Design Asset Search</h3>
+        <div class="label">Friction</div>
+        <p>Finding "that side-profile sketch with the orange accent" means scrolling folders named <i>final_v3_REAL_final</i>.</p>
+        <div class="label">Tool</div>
+        <ul>
+          <li>Search sketches, renders and references by describing them in plain English</li>
+          <li>Or upload an image to find visually similar work</li>
+          <li>Uses CLIP, a vision-language model, and runs fully offline so confidential work stays on the laptop</li>
+          <li>Incremental index, so refreshing only re-reads new or changed files</li>
+        </ul>
+        <div class="chips"><span class="chip">PyTorch</span><span class="chip">OpenCLIP</span><span class="chip">Embeddings</span><span class="chip">Gradio + CLI</span></div>
+        <a class="btn" href="https://github.com/Subzero-005/design-asset-search" target="_blank" rel="noopener">View project →</a>
+      </div>
+    </article>
+
+    <article class="tool">
+      <div class="shot"><img src="assets/review-sheet.png" alt="An A4 contact sheet of renamed, watermarked concept renders ready for a design review" loading="lazy"></div>
+      <div>
+        <div class="eyebrow">Workflow · Reviews</div>
+        <h3>Review Sheet Maker</h3>
+        <div class="label">Friction</div>
+        <p>Before every review, 20–30 minutes go into renaming, resizing, watermarking and pasting renders into a PDF.</p>
+        <div class="label">Tool</div>
+        <ul>
+          <li>One click from a folder of renders to a full review pack</li>
+          <li>Team naming convention with a live preview; never overwrites a file</li>
+          <li>Resize, convert and add a <i>CONFIDENTIAL</i> watermark</li>
+          <li>Print-ready A4 contact sheet PDF with numbered images</li>
+        </ul>
+        <div class="chips"><span class="chip">Python</span><span class="chip">Pillow</span><span class="chip">PDF generation</span><span class="chip">Gradio</span></div>
+        <a class="btn" href="https://github.com/Subzero-005/review-sheet-maker" target="_blank" rel="noopener">View project →</a>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="ai">
+  <div class="wrap">
+    <h2>AI &amp; visual computing</h2>
+    <p class="section-lede">Deep learning, computer vision and real-time image processing.</p>
+    <div class="grid">
+      <a class="card" href="https://github.com/Subzero-005/realtime-gpu-image-filters" target="_blank" rel="noopener">
+        <h3>Real-Time GPU Image Filters</h3>
+        <p>A live camera and video filter app with a Qt GUI. It uses custom CUDA kernels and CuPy, has presets like Cinematic and Artistic, shows an FPS and GPU overlay, and falls back to the CPU automatically.</p>
+        <div class="chips"><span class="chip">CUDA</span><span class="chip">CuPy</span><span class="chip">PyQt5</span><span class="chip">Multithreading</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/MCHF-Net-undersea-microplastic-detection" target="_blank" rel="noopener">
+        <h3>MCHF-Net: Microplastic Detection</h3>
+        <p>A multi-channel neural network that fuses holographic microscopy images using parallel EfficientNet backbones and dual attention. It flags uncertain detections for review and explains its decisions with Grad-CAM.</p>
+        <div class="chips"><span class="chip">PyTorch</span><span class="chip">CNN</span><span class="chip">Attention</span><span class="chip">Explainability</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/plant-disease-detection" target="_blank" rel="noopener">
+        <h3>Plant Disease Detection</h3>
+        <p>An image classification pipeline on PlantVillage, covering 54,305 images and 38 disease classes across 14 crops, built with transfer learning on EfficientNet-B0.</p>
+        <div class="chips"><span class="chip">PyTorch</span><span class="chip">EfficientNet</span><span class="chip">Computer vision</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/telco-churn-mlflow" target="_blank" rel="noopener">
+        <h3>Churn Prediction, Tracked &amp; Deployed</h3>
+        <p>An XGBoost model with every experiment logged in MLflow. The best run is picked automatically and served as a Gradio web app for single and batch CSV predictions.</p>
+        <div class="chips"><span class="chip">XGBoost</span><span class="chip">MLflow</span><span class="chip">Gradio</span></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section id="engineering">
+  <div class="wrap">
+    <h2>Engineering &amp; deployment</h2>
+    <p class="section-lede">I can carry a tool from prototype to something a team can actually rely on and use.</p>
+    <div class="grid">
+      <a class="card" href="https://github.com/Subzero-005/distributed-job-scheduler" target="_blank" rel="noopener">
+        <h3>Distributed Job Scheduler</h3>
+        <p>A FastAPI and PostgreSQL platform with async workers, cron scheduling, retries with a dead-letter queue, and a React dashboard for monitoring.</p>
+        <div class="chips"><span class="chip">FastAPI</span><span class="chip">React</span><span class="chip">PostgreSQL</span><span class="chip">Docker</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/GDB--full-stack-application" target="_blank" rel="noopener">
+        <h3>GDB: Global Digital Bank</h3>
+        <p>A full-stack banking platform made of Spring Boot microservices and a React front end, deployed on AWS with Docker, Kubernetes and Terraform.</p>
+        <div class="chips"><span class="chip">Spring Boot</span><span class="chip">React</span><span class="chip">Kubernetes</span><span class="chip">AWS</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/civictrack-issue-reporter" target="_blank" rel="noopener">
+        <h3>CivicTrack</h3>
+        <p>Citizens report neighbourhood problems with a photo and location, and admins sort and track each one through to resolution. It was designed around a real feedback gap between residents and authorities.</p>
+        <div class="chips"><span class="chip">Java</span><span class="chip">Full-stack</span><span class="chip">Docker</span></div>
+      </a>
+      <a class="card" href="https://github.com/Subzero-005/raga-roads" target="_blank" rel="noopener">
+        <h3>Raga Roads</h3>
+        <p>A platform that allocates artists to concerts using pluggable rule strategies, with JWT security, OpenAPI docs and a version split into microservices.</p>
+        <div class="chips"><span class="chip">Spring Boot</span><span class="chip">PostgreSQL</span><span class="chip">Docker Compose</span></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap about">
+    <div>
+      <h2>About</h2>
+      <p>I'm a Computer Science student at SRM Institute of Science and Technology. I work across AI and computer vision, full-stack development and cloud deployment.</p>
+      <p>What I enjoy most is spotting the moment when a person stops doing their real work to fight a tool, and then making that moment disappear. I like small, sharp tools with clear documentation that people actually use, more than impressive demos nobody opens twice.</p>
+    </div>
+    <div class="facts">
+      <div><span>Degree</span>B.Tech CSE, SRM (2023–27)</div>
+      <div><span>CGPA</span>8.78</div>
+      <div><span>Internship</span>Root Info Solutions, 2025</div>
+      <div><span>Languages</span>Python, JavaScript, Java, C++, Swift</div>
+      <div><span>AI / CV</span>PyTorch, CLIP, CNNs, CUDA</div>
+      <div><span>Ship</span>Gradio, React, Docker, AWS, GCP</div>
+    </div>
+  </div>
+</section>
+
+<footer id="contact">
+  <div class="wrap">
+    <h2>Let's talk</h2>
+    <div class="cta">
+      <a class="btn primary" href="mailto:adhirajmadan@gmail.com">adhirajmadan@gmail.com</a>
+      <a class="btn" href="https://www.linkedin.com/in/adhiraj-madan-151016289/" target="_blank" rel="noopener">LinkedIn</a>
+      <a class="btn" href="https://github.com/Subzero-005" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement, btn = document.getElementById('theme');
+    try { var saved = localStorage.getItem('theme'); if (saved) root.setAttribute('data-theme', saved); } catch (e) {}
+    btn.addEventListener('click', function () {
+      var dark = root.getAttribute('data-theme') === 'dark' ||
+        (!root.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+      var next = dark ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('theme', next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
