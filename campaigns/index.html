@@ -36,7 +36,31 @@
   .controls label { margin: 0 0 4px; }
   .controls select { width: auto; min-width: 180px; }
   .full { padding-bottom: 64px; }
-  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .tune { margin-bottom: 20px; }
+  .tune summary { cursor: pointer; font-size: 15px; list-style: none; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .tune summary::-webkit-details-marker { display: none; }
+  .tune summary::before { content: "▸"; color: var(--accent); transition: transform .15s; display: inline-block; }
+  .tune[open] summary::before { transform: rotate(90deg); }
+  .muted { color: var(--muted); font-size: 13px; font-weight: 400; }
+  .tune-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 24px; margin-top: 10px; }
+  .tune-grid label { display: flex; justify-content: space-between; margin: 10px 0 2px; }
+  .tune-grid label output { color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+  .tune-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 16px; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  tr.changed td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  tr[data-id] { cursor: pointer; }
+  tr[data-id]:hover td { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .was { color: var(--muted); font-size: 11px; margin-left: 4px; white-space: nowrap; }
+  .drill { margin-top: 16px; border-color: var(--accent); }
+  .drill-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+  .drill-head h3 { margin: 0 0 4px; font-size: 18px; }
+  .close { background: none; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; font: inherit; padding: 4px 10px; }
+  .mini { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 10px 0 6px; font-size: 14px; }
+  .mini b { font-variant-numeric: tabular-nums; }
+  .readout { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 14px; font-size: 15px; }
+  .readout b { font-size: 20px; color: var(--accent-ink); }
+  .slider-wide { flex: 1; min-width: 240px; }
+  @media (max-width: 860px) { .two, .tune-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -48,13 +72,35 @@
 <header class="wrap">
   <div class="eyebrow">Live dashboard · Marketing analytics</div>
   <h1>Campaign Performance Evaluator</h1>
-  <p class="lede">24 ad campaigns across 6 channels over 90 days. Each campaign gets a 0–100 score and an A–F grade with a recommendation; unusual days are flagged with a likely cause; the budget is reallocated at the same total spend; and a random-forest model forecasts conversions at different spend levels.</p>
+  <p class="lede">24 ad campaigns across 6 channels over 90 days. Each campaign gets a 0–100 score and an A–F grade with a recommendation; unusual days are flagged with a likely cause; the budget is reallocated; and a random-forest model forecasts conversions at different spend levels. <b>Everything is interactive:</b> re-weight the scoring model, simulate budgets with diminishing returns, drag the spend forecast, and click any campaign to see its daily performance.</p>
   <span class="privacy" id="meta">Loading results…</span>
 </header>
 
 <main class="wrap full">
   <div class="filters" id="filters"><span>Channels</span></div>
   <div class="tiles" id="tiles"></div>
+
+  <details class="panel tune" id="tune" open>
+    <summary><b>Tune the scoring model</b> <span class="muted" id="tuneSummary">Drag a weight and every score, grade, recommendation and budget updates live.</span></summary>
+    <div class="tune-grid">
+      <div><label for="w-roas">ROAS weight <output id="o-roas"></output></label><input type="range" id="w-roas" min="0" max="60" step="5" value="35"></div>
+      <div><label for="w-cpa">CPA weight <output id="o-cpa"></output></label><input type="range" id="w-cpa" min="0" max="60" step="5" value="20"></div>
+      <div><label for="w-cvr">CVR weight <output id="o-cvr"></output></label><input type="range" id="w-cvr" min="0" max="60" step="5" value="20"></div>
+      <div><label for="w-ctr">CTR weight <output id="o-ctr"></output></label><input type="range" id="w-ctr" min="0" max="60" step="5" value="15"></div>
+      <div><label for="w-cpc">CPC weight <output id="o-cpc"></output></label><input type="range" id="w-cpc" min="0" max="60" step="5" value="10"></div>
+      <div><label for="targetRoas">Target ROAS <output id="o-target"></output></label><input type="range" id="targetRoas" min="1" max="6" step="0.25" value="2"></div>
+    </div>
+    <div class="tune-actions">
+      <span class="muted">Presets:</span>
+      <div class="presets">
+        <button class="pill" data-preset="35,20,20,15,10">Balanced (default)</button>
+        <button class="pill" data-preset="60,10,10,10,10">Revenue first</button>
+        <button class="pill" data-preset="10,40,30,10,10">Cost efficiency</button>
+        <button class="pill" data-preset="10,5,15,50,20">Brand awareness</button>
+      </div>
+      <button class="close" id="resetModel">Reset</button>
+    </div>
+  </details>
 
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" aria-selected="true" data-tab="score">Scorecard</button>
@@ -66,8 +112,17 @@
   </div>
 
   <section class="panel-tab" id="tab-score">
-    <p class="note">Score = weighted percentile rank of ROAS (35%), CPA (20%), CVR (20%), CTR (15%) and CPC (10%). Grades: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, F below that. Click a column to sort.</p>
+    <p class="note"><span id="scoreNote"></span> Grades: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, F below that. Click a column to sort, or <b>click a campaign</b> to see its daily performance.</p>
     <div class="panel scroll"><table id="scoreTable"></table></div>
+    <div class="panel drill" id="drill" hidden>
+      <div class="drill-head">
+        <div><h3 id="drillTitle"></h3><div class="muted" id="drillSub"></div></div>
+        <button class="close" id="drillClose" aria-label="Close campaign details">✕ Close</button>
+      </div>
+      <div class="mini" id="drillKpis"></div>
+      <div class="chart" id="drillChart" style="border:0;padding:0"></div>
+      <p class="note" id="drillAnoms" style="margin-top:8px"></p>
+    </div>
     <div class="two" style="margin-top:16px">
       <div class="chart" id="gradeChart"></div>
       <div class="chart" id="scatterChart"></div>
@@ -99,7 +154,16 @@
   </section>
 
   <section class="panel-tab" id="tab-budget" hidden>
-    <p class="note">Same total budget, redistributed by performance score × ROAS. Paused campaigns get nothing. Projections assume each campaign's ROAS holds.</p>
+    <p class="note">Budget is split by performance score × ROAS, using the scores from the model above. Paused campaigns get nothing, and every other campaign keeps at least 2% so it can still gather data.</p>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="two" style="gap:24px">
+        <div><label for="budgetPct" style="display:flex;justify-content:space-between">Total budget <output id="o-budget"></output></label>
+          <input type="range" id="budgetPct" min="50" max="150" step="5" value="100"></div>
+        <div><label for="returnsExp" style="display:flex;justify-content:space-between">Diminishing returns <output id="o-returns"></output></label>
+          <input type="range" id="returnsExp" min="0.5" max="1" step="0.05" value="1"></div>
+      </div>
+      <p class="note" id="returnsNote" style="margin:10px 0 0"></p>
+    </div>
     <div class="tiles" id="budgetTiles"></div>
     <div class="chart" id="budgetChart"></div>
     <div class="panel scroll" style="margin-top:16px"><table id="budgetTable"></table></div>
@@ -109,7 +173,10 @@
     <p class="note" id="modelNote"></p>
     <div class="controls">
       <div><label for="fcCampaign">Campaign</label><select id="fcCampaign"></select></div>
+      <div class="slider-wide"><label for="fcSpend" style="display:flex;justify-content:space-between">Daily spend <output id="o-spend"></output></label>
+        <input type="range" id="fcSpend" min="0" max="1" step="0.001" value="0.333"></div>
     </div>
+    <div class="readout" id="fcReadout"></div>
     <div class="two">
       <div class="chart" id="whatIfChart"></div>
       <div class="chart" id="importanceChart"></div>
@@ -156,13 +223,84 @@
     $("tiles").innerHTML = t.map(function (x) { return "<div class='tile'><span>" + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("");
   }
 
+  // ---------- scoring model (same rules as cpe/scoring.py) ----------
+  var KPIS = ["roas", "cpa", "cvr", "ctr", "cpc"];
+  var HIGHER = { roas: true, cvr: true, ctr: true, cpa: false, cpc: false };
+  var DEFAULT_W = { roas: 35, cpa: 20, cvr: 20, ctr: 15, cpc: 10 };
+  var scored = [], baseline = {};
+
+  // pandas Series.rank(pct=True, method="average"), then stretched to 0-100
+  function pctScore(vals, higher) {
+    var n = vals.length;
+    if (new Set(vals).size <= 1) return vals.map(function () { return 50; });
+    var idx = vals.map(function (_, i) { return i; }).sort(function (a, b) { return higher ? vals[a] - vals[b] : vals[b] - vals[a]; });
+    var ranks = new Array(n);
+    for (var i = 0; i < n;) {
+      var j = i;
+      while (j + 1 < n && vals[idx[j + 1]] === vals[idx[i]]) j++;
+      for (var k = i; k <= j; k++) ranks[idx[k]] = ((i + j) / 2 + 1) / n;  // ties share their average rank
+      i = j + 1;
+    }
+    var mn = Math.min.apply(null, ranks), mx = Math.max.apply(null, ranks);
+    return ranks.map(function (r) { return (r - mn) / (mx - mn) * 100; });
+  }
+
+  function gradeOf(score) { return score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : score >= 35 ? "D" : "F"; }
+
+  function recommend(r, target) {
+    if (r.roas >= target * 1.5 && r.performance_score >= 65) return "Scale: increase budget";
+    if (r.roas >= target && r.performance_score >= 50) return "Maintain: performing on target";
+    if (r.roas >= 1.0) {
+      if (r.ctr_score < 40) return "Optimize: refresh creatives / targeting (low CTR)";
+      if (r.cvr_score < 40) return "Optimize: improve landing page (low CVR)";
+      return "Optimize: tighten bidding to lower CPA";
+    }
+    return "Pause: spend exceeds revenue";
+  }
+
+  function readWeights() {
+    var w = {}; KPIS.forEach(function (k) { w[k] = +$("w-" + k).value; }); return w;
+  }
+
+  function rescore() {
+    var w = readWeights(), target = +$("targetRoas").value;
+    var total = KPIS.reduce(function (a, k) { return a + w[k]; }, 0);
+    var rows = D.campaigns.map(function (c) { return Object.assign({}, c); });
+    // zero-conversion campaigns have CPA 0; treat that as the worst CPA, not the best
+    var maxCpa = Math.max.apply(null, rows.map(function (r) { return r.cpa; }));
+    var cpaVals = rows.map(function (r) { return r.conversions > 0 ? r.cpa : maxCpa * 2 + 1; });
+    var parts = {};
+    KPIS.forEach(function (k) { parts[k] = pctScore(k === "cpa" ? cpaVals : rows.map(function (r) { return r[k]; }), HIGHER[k]); });
+    rows.forEach(function (r, i) {
+      var sc = 0;
+      KPIS.forEach(function (k) { r[k + "_score"] = parts[k][i]; sc += total ? parts[k][i] * w[k] / total : 50 / KPIS.length; });
+      r.performance_score = Math.round(sc * 10) / 10;
+      r.grade = gradeOf(r.performance_score);
+      r.recommendation = recommend(r, target);
+    });
+    scored = rows;
+
+    KPIS.forEach(function (k) { $("o-" + k).textContent = total ? Math.round(w[k] / total * 100) + "%" : "–"; });
+    $("o-target").textContent = target.toFixed(2) + "x";
+    var changed = scored.filter(function (r) { return r.grade !== baseline[r.campaign_id]; }).length;
+    var defaults = KPIS.every(function (k) { return w[k] === DEFAULT_W[k]; }) && target === D.target_roas;
+    $("tuneSummary").textContent = defaults ? "Drag a weight and every score, grade, recommendation and budget updates live."
+      : changed + " of " + scored.length + " campaigns changed grade compared with the default model.";
+    $("scoreNote").textContent = "Score = weighted percentile rank of " + KPIS.map(function (k) {
+      return k.toUpperCase() + " (" + (total ? Math.round(w[k] / total * 100) : 0) + "%)"; }).join(", ") + ".";
+    document.querySelectorAll("[data-preset]").forEach(function (b) {
+      var v = b.dataset.preset.split(",").map(Number);
+      b.setAttribute("aria-pressed", String(KPIS.every(function (k, i) { return w[k] === v[i]; })));
+    });
+  }
+
   // ---------- scorecard ----------
   var SCORE_COLS = [["campaign_id", "ID"], ["campaign_name", "Campaign"], ["channel", "Channel"], ["spend", "Spend", "num"],
     ["revenue", "Revenue", "num"], ["roas", "ROAS", "num"], ["ctr", "CTR", "num"], ["cvr", "CVR", "num"], ["cpa", "CPA", "num"],
     ["performance_score", "Score", "num"], ["grade", "Grade"], ["recommendation", "Recommendation"]];
 
   function scorecard() {
-    var rows = D.campaigns.filter(inChannel).slice().sort(function (a, b) {
+    var rows = scored.filter(inChannel).slice().sort(function (a, b) {
       var x = a[sortState.key], y = b[sortState.key];
       return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortState.dir;
     });
@@ -170,9 +308,10 @@
       var arrow = sortState.key === c[0] ? (sortState.dir > 0 ? " ↑" : " ↓") : "";
       return "<th class='" + (c[2] || "") + "' data-key='" + c[0] + "' style='cursor:pointer'>" + c[1] + arrow + "</th>";
     }).join("") + "</tr></thead><tbody>" + rows.map(function (r) {
-      return "<tr>" + SCORE_COLS.map(function (c) {
+      var was = baseline[r.campaign_id];
+      return "<tr data-id='" + esc(r.campaign_id) + "'" + (r.grade !== was ? " class='changed'" : "") + ">" + SCORE_COLS.map(function (c) {
         var k = c[0], v = r[k];
-        if (k === "grade") return "<td><span class='grade g-" + v + "'>" + v + "</span></td>";
+        if (k === "grade") return "<td><span class='grade g-" + v + "'>" + v + "</span>" + (v !== was ? "<span class='was'>was " + was + "</span>" : "") + "</td>";
         if (k === "performance_score") return "<td class='num'><div style='display:flex;gap:8px;align-items:center;justify-content:flex-end'>" +
           v.toFixed(1) + "<div class='bar'><i style='width:" + v + "%'></i></div></div></td>";
         return "<td class='" + (c[2] || "") + "'>" + (FMT[k] ? FMT[k](v) : esc(v)) + "</td>";
@@ -185,19 +324,69 @@
         scorecard();
       });
     });
+    $("scoreTable").querySelectorAll("tr[data-id]").forEach(function (tr) {
+      tr.addEventListener("click", function () { openDrill(tr.dataset.id); });
+    });
 
     var grades = ["A", "B", "C", "D", "F"], gc = { A: "#1f9d55", B: "#5a9e2f", C: "#c99a06", D: "#d9731a", F: "#c8322b" };
-    Plotly.react("gradeChart", [{ type: "bar", x: grades, y: grades.map(function (g) { return rows.filter(function (r) { return r.grade === g; }).length; }),
-      marker: { color: grades.map(function (g) { return gc[g]; }) }, hovertemplate: "Grade %{x}: %{y} campaigns<extra></extra>" }],
-      layout("Grade distribution", { yaxis: { title: "Campaigns", gridcolor: css("--line"), dtick: 1 } }), CFG);
+    var baseRows = D.campaigns.filter(inChannel);
+    Plotly.react("gradeChart", [
+      { type: "bar", name: "Default model", x: grades, y: grades.map(function (g) { return baseRows.filter(function (r) { return r.grade === g; }).length; }),
+        marker: { color: css("--muted"), opacity: 0.45 }, hovertemplate: "Default · grade %{x}: %{y}<extra></extra>" },
+      { type: "bar", name: "Your model", x: grades, y: grades.map(function (g) { return rows.filter(function (r) { return r.grade === g; }).length; }),
+        marker: { color: grades.map(function (g) { return gc[g]; }) }, hovertemplate: "Your model · grade %{x}: %{y}<extra></extra>" }],
+      layout("Grade distribution", { barmode: "group", yaxis: { title: "Campaigns", gridcolor: css("--line"), dtick: 1 } }), CFG);
     var byCh = groupBy(rows, "channel");
     Plotly.react("scatterChart", Object.keys(byCh).map(function (ch) {
       var r = byCh[ch];
       return { type: "scatter", mode: "markers", name: ch, x: r.map(function (c) { return c.spend; }), y: r.map(function (c) { return c.roas; }),
-        text: r.map(function (c) { return c.campaign_name + " (" + c.grade + ")"; }),
+        text: r.map(function (c) { return c.campaign_name + " (" + c.grade + ")"; }), customdata: r.map(function (c) { return c.campaign_id; }),
         marker: { size: r.map(function (c) { return 8 + Math.sqrt(c.conversions) / 4; }), color: chColour[ch], opacity: 0.8 },
-        hovertemplate: "%{text}<br>Spend %{x:,.0f}<br>ROAS %{y:.2f}x<extra></extra>" };
+        hovertemplate: "%{text}<br>Spend %{x:,.0f}<br>ROAS %{y:.2f}x<br>Click for details<extra></extra>" };
     }), layout("Spend vs ROAS (bubble = conversions)", { xaxis: { title: "Spend", gridcolor: css("--line") }, yaxis: { title: "ROAS", gridcolor: css("--line") } }), CFG);
+    var sc = $("scatterChart");
+    if (!sc.dataset.bound) {
+      sc.on("plotly_click", function (ev) { if (ev.points[0]) openDrill(ev.points[0].customdata); });
+      sc.dataset.bound = "1";
+    }
+  }
+
+  // ---------- campaign drill-down ----------
+  function openDrill(id) {
+    var c = scored.find(function (r) { return r.campaign_id === id; }), d = D.daily[id];
+    if (!c || !d) return;
+    var box = $("drill"); box.hidden = false;
+    $("drillTitle").innerHTML = esc(c.campaign_name) + " <span class='grade g-" + c.grade + "' style='font-size:13px;vertical-align:3px'>" + c.grade + "</span>";
+    $("drillSub").textContent = c.campaign_id + " · " + c.channel + (c.objective ? " · " + c.objective : "") + (c.region ? " · " + c.region : "") + " · " + c.recommendation;
+    $("drillKpis").innerHTML = [["Score", c.performance_score.toFixed(1)], ["Spend", num(c.spend)], ["Revenue", num(c.revenue)], ["ROAS", x2(c.roas)],
+      ["CTR", pct(c.ctr)], ["CVR", pct(c.cvr)], ["CPA", num(c.cpa, 2)]]
+      .map(function (k) { return "<span><span class='muted'>" + k[0] + "</span> <b>" + k[1] + "</b></span>"; }).join("");
+    // 7-day rolling ROAS smooths out daily noise
+    var roll = d.date.map(function (_, i) {
+      var a = Math.max(0, i - 6), sp = 0, rv = 0;
+      for (var j = a; j <= i; j++) { sp += d.spend[j]; rv += d.revenue[j]; }
+      return sp ? rv / sp : null;
+    });
+    var anoms = D.anomalies.filter(function (a) { return a.campaign_id === id; });
+    var traces = [
+      { type: "bar", name: "Spend", x: d.date, y: d.spend, marker: { color: css("--line") }, hovertemplate: "Spend %{y:,.0f}<extra></extra>" },
+      { type: "scatter", mode: "lines", name: "Revenue", x: d.date, y: d.revenue, line: { color: chColour[c.channel], width: 2 }, hovertemplate: "Revenue %{y:,.0f}<extra></extra>" },
+      { type: "scatter", mode: "lines", name: "ROAS (7-day)", x: d.date, y: roll, yaxis: "y2", line: { color: css("--ink"), dash: "dot", width: 1.5 }, hovertemplate: "ROAS %{y:.2f}x<extra></extra>" }
+    ];
+    if (anoms.length) {
+      traces.push({ type: "scatter", mode: "markers", name: "Anomaly", x: anoms.map(function (a) { return a.date; }),
+        y: anoms.map(function (a) { var i = d.date.indexOf(a.date); return i >= 0 ? d.revenue[i] : null; }),
+        marker: { color: "#c8322b", size: 13, symbol: "x", line: { width: 2, color: "#c8322b" } },
+        text: anoms.map(function (a) { return String(a.kpi).toUpperCase() + " " + a.direction + ": " + a.likely_cause; }),
+        hovertemplate: "%{x}<br>%{text}<extra></extra>" });
+    }
+    Plotly.react("drillChart", traces, layout("Daily spend, revenue and ROAS", {
+      height: 380, hovermode: "x unified", xaxis: { gridcolor: css("--line") }, yaxis: { title: "Spend / revenue", gridcolor: css("--line") },
+      yaxis2: { title: "ROAS", overlaying: "y", side: "right", showgrid: false } }), CFG);
+    $("drillAnoms").innerHTML = anoms.length ? "<b>" + anoms.length + " unusual day" + (anoms.length > 1 ? "s" : "") + "</b> (red ✕): " +
+      anoms.map(function (a) { return esc(a.date + " – " + String(a.kpi).toUpperCase() + " " + a.direction + ", " + a.likely_cause.toLowerCase()); }).join("; ") + "."
+      : "No unusual days detected for this campaign.";
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   // ---------- channels ----------
@@ -235,25 +424,54 @@
       }).join("") + "</tbody>";
   }
 
-  // ---------- budget ----------
+  // ---------- budget (same rules as budget_reallocation in cpe/scoring.py) ----------
+  function reallocate(rows, total, exponent) {
+    var act = rows.map(function (r) { return r.recommendation.indexOf("Pause") !== 0; });
+    var w = rows.map(function (r, i) { return act[i] ? r.performance_score * r.roas : 0; });
+    var ws = w.reduce(function (a, b) { return a + b; }, 0), share;
+    if (ws === 0) share = rows.map(function (r) { return r.spend / sum(rows, "spend"); });
+    else {
+      share = w.map(function (x, i) { var s = x / ws; return act[i] ? Math.max(s, 0.02) : s; });
+      var t = share.reduce(function (a, b) { return a + b; }, 0);
+      share = share.map(function (s) { return s / t; });
+    }
+    return rows.map(function (r, i) {
+      var sugg = Math.round(share[i] * total * 100) / 100, ratio = r.spend > 0 ? sugg / r.spend : 0;
+      return { campaign_id: r.campaign_id, campaign_name: r.campaign_name, channel: r.channel, spend: r.spend, roas: r.roas,
+        recommendation: r.recommendation, suggested_budget: sugg, change: sugg - r.spend, change_pct: r.spend > 0 ? (sugg - r.spend) / r.spend : 0,
+        projected_revenue: r.spend * r.roas * Math.pow(ratio, exponent) };
+    });
+  }
+
   function budget() {
-    var rows = D.budget.filter(inChannel).slice().sort(function (a, b) { return b.change - a.change; });
+    var pctB = +$("budgetPct").value, b = +$("returnsExp").value;
+    var totalSpend = sum(scored, "spend");
+    $("o-budget").textContent = pctB + "% · " + num(totalSpend * pctB / 100);
+    $("o-returns").textContent = b === 1 ? "off" : "exponent " + b.toFixed(2);
+    $("returnsNote").textContent = b === 1
+      ? "Off: assumes each campaign keeps its ROAS at any spend level. That's optimistic, so treat the projection as an upper bound."
+      : "On: revenue grows with spend^" + b.toFixed(2) + ", so doubling a campaign's spend raises its revenue by about " +
+        Math.round((Math.pow(2, b) - 1) * 100) + "% rather than 100%. Real ad channels usually saturate like this.";
+    var all = reallocate(scored, totalSpend * pctB / 100, b);
+    var rows = all.filter(inChannel).sort(function (a, c) { return c.change - a.change; });
     var spend = sum(rows, "spend"), proj = sum(rows, "projected_revenue");
-    var actual = sum(D.campaigns.filter(inChannel), "revenue");
+    var actual = sum(scored.filter(inChannel), "revenue");
     $("budgetTiles").innerHTML = [["Current spend", num(spend)], ["Suggested spend", num(sum(rows, "suggested_budget"))],
       ["Actual revenue", num(actual)], ["Projected revenue", num(proj) + " <small class='" + (proj >= actual ? "pos" : "neg") + "' style='font-size:13px'>" +
-      (proj >= actual ? "+" : "") + num(proj - actual) + "</small>"]]
+      (proj >= actual ? "+" : "") + num(proj - actual) + "</small>"],
+      ["Projected ROAS", sum(rows, "suggested_budget") ? x2(proj / sum(rows, "suggested_budget")) : "–"]]
       .map(function (x) { return "<div class='tile'><span>" + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("");
     Plotly.react("budgetChart", [{ type: "bar", x: rows.map(function (r) { return r.campaign_id; }), y: rows.map(function (r) { return r.change; }),
       marker: { color: rows.map(function (r) { return r.change >= 0 ? "#1f9d55" : "#c8322b"; }) },
       text: rows.map(function (r) { return r.campaign_name + " · " + r.recommendation; }),
       hovertemplate: "%{text}<br>Change %{y:,.0f}<extra></extra>" }], layout("Budget change per campaign"), CFG);
-    $("budgetTable").innerHTML = "<thead><tr><th>Campaign</th><th>Channel</th><th>Recommendation</th><th class='num'>Current</th><th class='num'>Suggested</th><th class='num'>Change</th><th class='num'>ROAS</th></tr></thead><tbody>" +
+    $("budgetTable").innerHTML = "<thead><tr><th>Campaign</th><th>Channel</th><th>Recommendation</th><th class='num'>Current</th><th class='num'>Suggested</th><th class='num'>Change</th><th class='num'>ROAS</th><th class='num'>Projected revenue</th></tr></thead><tbody>" +
       rows.map(function (r) {
         return "<tr><td>" + esc(r.campaign_name) + "</td><td>" + esc(r.channel) + "</td><td>" + esc(r.recommendation) + "</td><td class='num'>" + num(r.spend) +
           "</td><td class='num'>" + num(r.suggested_budget) + "</td><td class='num " + (r.change >= 0 ? "pos" : "neg") + "'>" + (r.change >= 0 ? "+" : "") + num(r.change) +
-          " (" + (r.change_pct >= 0 ? "+" : "") + num(r.change_pct * 100, 0) + "%)</td><td class='num'>" + x2(r.roas) + "</td></tr>";
+          " (" + (r.change_pct >= 0 ? "+" : "") + num(r.change_pct * 100, 0) + "%)</td><td class='num'>" + x2(r.roas) + "</td><td class='num'>" + num(r.projected_revenue) + "</td></tr>";
       }).join("") + "</tbody>";
+    return all;
   }
 
   // ---------- forecast ----------
@@ -270,14 +488,36 @@
       y: fi.map(function (r) { return r.feature.replace(/^(num|cat)__/, ""); }), marker: { color: "#2f6fdf" } }],
       layout("Top feature importances", { margin: { l: 170, r: 16, t: 48, b: 40 } }), CFG);
   }
+  function forecastRows() {
+    return (D.forecast.what_if[$("fcCampaign").value] || []).slice().sort(function (a, b) { return a.spend - b.spend; });
+  }
+  // conversions at a spend level between two model points, by straight-line interpolation
+  function interp(rows, spend) {
+    for (var i = 0; i < rows.length - 1; i++) {
+      var a = rows[i], b = rows[i + 1];
+      if (spend <= b.spend) { var t = (spend - a.spend) / (b.spend - a.spend); return a.predicted_conversions + t * (b.predicted_conversions - a.predicted_conversions); }
+    }
+    return rows[rows.length - 1].predicted_conversions;
+  }
   function forecast() {
     if (!D.forecast) return;
-    var rows = D.forecast.what_if[$("fcCampaign").value] || [];
+    var rows = forecastRows();
+    if (!rows.length) return;
+    var lo = rows[0].spend, hi = rows[rows.length - 1].spend;
+    var spend = lo + (+$("fcSpend").value) * (hi - lo), conv = interp(rows, spend);
+    var avg = rows[2] ? rows[2].spend : lo;  // the 1.0x level is the campaign's current average
+    $("o-spend").textContent = num(spend, 0) + " / day";
+    $("fcReadout").innerHTML = "At <b>" + num(spend, 0) + "</b>/day (" + Math.round(spend / avg * 100) + "% of today's average), the model expects about <b>" +
+      num(conv, 1) + "</b> conversions tomorrow, a CPA of <b>" + (conv > 0 ? num(spend / conv, 2) : "–") + "</b>.";
     Plotly.react("whatIfChart", [
-      { type: "bar", name: "Predicted conversions", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_conversions; }), marker: { color: "#f5821f" } },
-      { type: "scatter", mode: "lines+markers", name: "Predicted CPA", yaxis: "y2", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_cpa; }), line: { color: css("--ink") } }
+      { type: "scatter", mode: "lines+markers", name: "Predicted conversions", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_conversions; }),
+        line: { color: "#f5821f", width: 2 }, marker: { size: 7 } },
+      { type: "scatter", mode: "lines", name: "Predicted CPA", yaxis: "y2", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_cpa; }),
+        line: { color: css("--muted"), dash: "dot" } },
+      { type: "scatter", mode: "markers", name: "Your spend", x: [spend], y: [conv], marker: { color: css("--ink"), size: 15, symbol: "diamond", line: { color: "#f5821f", width: 2 } },
+        hovertemplate: "Spend %{x:,.0f}<br>Conversions %{y:.1f}<extra></extra>" }
     ], layout("What-if: next-day conversions vs spend", {
-      xaxis: { title: "Daily spend", type: "category", gridcolor: css("--line") }, yaxis: { title: "Conversions", gridcolor: css("--line") },
+      xaxis: { title: "Daily spend", gridcolor: css("--line") }, yaxis: { title: "Conversions", gridcolor: css("--line"), rangemode: "tozero" },
       yaxis2: { title: "CPA", overlaying: "y", side: "right", showgrid: false } }), CFG);
     $("whatIfTable").innerHTML = "<thead><tr><th class='num'>Daily spend</th><th class='num'>Predicted conversions</th><th class='num'>Predicted CPA</th></tr></thead><tbody>" +
       rows.map(function (r) { return "<tr><td class='num'>" + num(r.spend, 2) + "</td><td class='num'>" + num(r.predicted_conversions, 1) + "</td><td class='num'>" + num(r.predicted_cpa, 2) + "</td></tr>"; }).join("") + "</tbody>";
@@ -302,7 +542,24 @@
   });
   $("chMetric").addEventListener("change", channels);
   $("trendKpi").addEventListener("change", trends);
-  $("fcCampaign").addEventListener("change", forecast);
+  $("fcCampaign").addEventListener("change", function () { $("fcSpend").value = 1 / 3; forecast(); });  // reset to the 1.0x level
+  $("fcSpend").addEventListener("input", forecast);
+  ["budgetPct", "returnsExp"].forEach(function (id) { $(id).addEventListener("input", budget); });
+  function modelChanged() { rescore(); renderAll(); if (!$("drill").hidden && drillId()) openDrill(drillId()); }
+  function drillId() { var t = $("drillSub").textContent; return t ? t.split(" · ")[0] : null; }
+  KPIS.forEach(function (k) { $("w-" + k).addEventListener("input", modelChanged); });
+  $("targetRoas").addEventListener("input", modelChanged);
+  document.querySelectorAll("[data-preset]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      b.dataset.preset.split(",").forEach(function (v, i) { $("w-" + KPIS[i]).value = v; });
+      modelChanged();
+    });
+  });
+  $("resetModel").addEventListener("click", function () {
+    KPIS.forEach(function (k) { $("w-" + k).value = DEFAULT_W[k]; });
+    $("targetRoas").value = D.target_roas; modelChanged();
+  });
+  $("drillClose").addEventListener("click", function () { $("drill").hidden = true; });
 
   fetch("data.json").then(function (r) { if (!r.ok) throw new Error("Could not load results (" + r.status + ")"); return r.json(); })
     .then(function (data) {
@@ -322,7 +579,10 @@
       });
       $("meta").textContent = D.period.start + " to " + D.period.end + " · " + D.period.campaigns + " campaigns · " + D.period.channels +
         " channels · target ROAS " + D.target_roas + "x · output of the Python pipeline (sample data)";
+      D.campaigns.forEach(function (c) { baseline[c.campaign_id] = c.grade; });
+      $("targetRoas").value = D.target_roas;
       forecastSetup();
+      rescore();
       renderAll();
       document.body.setAttribute("data-ready", "1");
     })
