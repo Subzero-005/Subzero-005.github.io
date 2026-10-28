@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campaign Performance Evaluator</title>
+<meta name="description" content="Marketing campaign scoring, anomaly detection, budget reallocation and spend forecasting: live results from a Python pipeline.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/tool.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+<style>
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 22px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .tile span { display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .tile b { font-size: 22px; letter-spacing: -0.01em; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+  .filters > span { color: var(--muted); font-size: 13px; margin-right: 4px; }
+  .pill { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .pill[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+  .tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel-tab[hidden] { display: none; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px; min-height: 340px; }
+  .note { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+  .grade { display: inline-block; min-width: 24px; text-align: center; border-radius: 6px; font-weight: 700; padding: 1px 6px; color: #fff; }
+  .g-A { background: #1f9d55; } .g-B { background: #5a9e2f; } .g-C { background: #c99a06; } .g-D { background: #d9731a; } .g-F { background: #c8322b; }
+  .bar { height: 6px; border-radius: 3px; background: var(--chip); min-width: 70px; }
+  .bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: #1f9d55; } .neg { color: #c8322b; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 12px; }
+  .controls label { margin: 0 0 4px; }
+  .controls select { width: auto; min-width: 180px; }
+  .full { padding-bottom: 64px; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a href="../">← Adhiraj Madan</a>
+  <a href="https://github.com/Subzero-005/campaign-performance-evaluator" target="_blank" rel="noopener">Source on GitHub</a>
+</div></nav>
+
+<header class="wrap">
+  <div class="eyebrow">Live dashboard · Marketing analytics</div>
+  <h1>Campaign Performance Evaluator</h1>
+  <p class="lede">24 ad campaigns across 6 channels over 90 days. Each campaign gets a 0–100 score and an A–F grade with a recommendation; unusual days are flagged with a likely cause; the budget is reallocated at the same total spend; and a random-forest model forecasts conversions at different spend levels.</p>
+  <span class="privacy" id="meta">Loading results…</span>
+</header>
+
+<main class="wrap full">
+  <div class="filters" id="filters"><span>Channels</span></div>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="score">Scorecard</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="channels">Channels</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="trends">Trends</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="anomalies">Anomalies</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="budget">Budget</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="forecast">Forecast</button>
+  </div>
+
+  <section class="panel-tab" id="tab-score">
+    <p class="note">Score = weighted percentile rank of ROAS (35%), CPA (20%), CVR (20%), CTR (15%) and CPC (10%). Grades: A ≥ 80, B ≥ 65, C ≥ 50, D ≥ 35, F below that. Click a column to sort.</p>
+    <div class="panel scroll"><table id="scoreTable"></table></div>
+    <div class="two" style="margin-top:16px">
+      <div class="chart" id="gradeChart"></div>
+      <div class="chart" id="scatterChart"></div>
+    </div>
+  </section>
+
+  <section class="panel-tab" id="tab-channels" hidden>
+    <div class="controls">
+      <div><label for="chMetric">Metric</label>
+        <select id="chMetric"><option value="roas">ROAS</option><option value="roi">ROI</option><option value="ctr">CTR</option><option value="cvr">CVR</option><option value="cpc">CPC</option><option value="cpa">CPA</option><option value="cpm">CPM</option></select></div>
+    </div>
+    <div class="two">
+      <div class="chart" id="channelChart"></div>
+      <div class="chart" id="spendPie"></div>
+    </div>
+  </section>
+
+  <section class="panel-tab" id="tab-trends" hidden>
+    <div class="controls">
+      <div><label for="trendKpi">KPI</label>
+        <select id="trendKpi"><option value="roas">ROAS</option><option value="spend">Spend</option><option value="revenue">Revenue</option><option value="conversions">Conversions</option><option value="ctr">CTR</option><option value="cvr">CVR</option><option value="cpa">CPA</option></select></div>
+    </div>
+    <div class="chart" id="trendChart"></div>
+  </section>
+
+  <section class="panel-tab" id="tab-anomalies" hidden>
+    <p class="note" id="anomNote"></p>
+    <div class="panel scroll"><table id="anomTable"></table></div>
+  </section>
+
+  <section class="panel-tab" id="tab-budget" hidden>
+    <p class="note">Same total budget, redistributed by performance score × ROAS. Paused campaigns get nothing. Projections assume each campaign's ROAS holds.</p>
+    <div class="tiles" id="budgetTiles"></div>
+    <div class="chart" id="budgetChart"></div>
+    <div class="panel scroll" style="margin-top:16px"><table id="budgetTable"></table></div>
+  </section>
+
+  <section class="panel-tab" id="tab-forecast" hidden>
+    <p class="note" id="modelNote"></p>
+    <div class="controls">
+      <div><label for="fcCampaign">Campaign</label><select id="fcCampaign"></select></div>
+    </div>
+    <div class="two">
+      <div class="chart" id="whatIfChart"></div>
+      <div class="chart" id="importanceChart"></div>
+    </div>
+    <div class="panel scroll" style="margin-top:16px"><table id="whatIfTable"></table></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var D = null, active = new Set(), sortState = { key: "performance_score", dir: -1 };
+  var PALETTE = ["#f5821f", "#2f6fdf", "#1f9d55", "#a259d9", "#d6336c", "#0e9aa7", "#8a6d3b", "#6b7280"];
+  var chColour = {};
+
+  // ---------- formatting ----------
+  var num = function (v, d) { return v == null ? "–" : v.toLocaleString(undefined, { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); };
+  var pct = function (v, d) { return v == null ? "–" : (v * 100).toFixed(d == null ? 2 : d) + "%"; };
+  var x2 = function (v) { return v == null ? "–" : v.toFixed(2) + "x"; };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  var FMT = { roas: x2, roi: function (v) { return pct(v, 1); }, ctr: pct, cvr: pct, cpc: function (v) { return num(v, 2); },
+              cpa: function (v) { return num(v, 2); }, cpm: function (v) { return num(v, 2); }, spend: num, revenue: num, conversions: num };
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function layout(title, extra) {
+    var l = { title: { text: title, font: { size: 15 } }, paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)",
+      font: { family: "Inter, system-ui, sans-serif", color: css("--ink"), size: 12 },
+      margin: { l: 56, r: 16, t: 48, b: 90 }, legend: { orientation: "h", y: -0.32 },
+      xaxis: { gridcolor: css("--line"), zerolinecolor: css("--line") }, yaxis: { gridcolor: css("--line"), zerolinecolor: css("--line") } };
+    return Object.assign(l, extra || {});
+  }
+  var CFG = { displayModeBar: false, responsive: true };
+  var inChannel = function (r) { return active.has(r.channel); };
+
+  // ---------- KPI tiles: ratios are recomputed from summed raw metrics ----------
+  function tiles() {
+    var s = { spend: 0, revenue: 0, conversions: 0, clicks: 0, impressions: 0 };
+    D.campaigns.filter(inChannel).forEach(function (c) { for (var k in s) s[k] += c[k]; });
+    var t = [["Spend", num(s.spend)], ["Revenue", num(s.revenue)],
+      ["ROAS", s.spend ? x2(s.revenue / s.spend) : "–"], ["ROI", s.spend ? pct((s.revenue - s.spend) / s.spend, 1) : "–"],
+      ["CTR", s.impressions ? pct(s.clicks / s.impressions) : "–"], ["CVR", s.clicks ? pct(s.conversions / s.clicks) : "–"],
+      ["CPA", s.conversions ? num(s.spend / s.conversions, 2) : "–"], ["Conversions", num(s.conversions)]];
+    $("tiles").innerHTML = t.map(function (x) { return "<div class='tile'><span>" + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("");
+  }
+
+  // ---------- scorecard ----------
+  var SCORE_COLS = [["campaign_id", "ID"], ["campaign_name", "Campaign"], ["channel", "Channel"], ["spend", "Spend", "num"],
+    ["revenue", "Revenue", "num"], ["roas", "ROAS", "num"], ["ctr", "CTR", "num"], ["cvr", "CVR", "num"], ["cpa", "CPA", "num"],
+    ["performance_score", "Score", "num"], ["grade", "Grade"], ["recommendation", "Recommendation"]];
+
+  function scorecard() {
+    var rows = D.campaigns.filter(inChannel).slice().sort(function (a, b) {
+      var x = a[sortState.key], y = b[sortState.key];
+      return (typeof x === "string" ? x.localeCompare(y) : x - y) * sortState.dir;
+    });
+    $("scoreTable").innerHTML = "<thead><tr>" + SCORE_COLS.map(function (c) {
+      var arrow = sortState.key === c[0] ? (sortState.dir > 0 ? " ↑" : " ↓") : "";
+      return "<th class='" + (c[2] || "") + "' data-key='" + c[0] + "' style='cursor:pointer'>" + c[1] + arrow + "</th>";
+    }).join("") + "</tr></thead><tbody>" + rows.map(function (r) {
+      return "<tr>" + SCORE_COLS.map(function (c) {
+        var k = c[0], v = r[k];
+        if (k === "grade") return "<td><span class='grade g-" + v + "'>" + v + "</span></td>";
+        if (k === "performance_score") return "<td class='num'><div style='display:flex;gap:8px;align-items:center;justify-content:flex-end'>" +
+          v.toFixed(1) + "<div class='bar'><i style='width:" + v + "%'></i></div></div></td>";
+        return "<td class='" + (c[2] || "") + "'>" + (FMT[k] ? FMT[k](v) : esc(v)) + "</td>";
+      }).join("") + "</tr>";
+    }).join("") + "</tbody>";
+    $("scoreTable").querySelectorAll("th").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var k = th.dataset.key;
+        sortState = { key: k, dir: sortState.key === k ? -sortState.dir : (typeof rows[0][k] === "string" ? 1 : -1) };
+        scorecard();
+      });
+    });
+
+    var grades = ["A", "B", "C", "D", "F"], gc = { A: "#1f9d55", B: "#5a9e2f", C: "#c99a06", D: "#d9731a", F: "#c8322b" };
+    Plotly.react("gradeChart", [{ type: "bar", x: grades, y: grades.map(function (g) { return rows.filter(function (r) { return r.grade === g; }).length; }),
+      marker: { color: grades.map(function (g) { return gc[g]; }) }, hovertemplate: "Grade %{x}: %{y} campaigns<extra></extra>" }],
+      layout("Grade distribution", { yaxis: { title: "Campaigns", gridcolor: css("--line"), dtick: 1 } }), CFG);
+    var byCh = groupBy(rows, "channel");
+    Plotly.react("scatterChart", Object.keys(byCh).map(function (ch) {
+      var r = byCh[ch];
+      return { type: "scatter", mode: "markers", name: ch, x: r.map(function (c) { return c.spend; }), y: r.map(function (c) { return c.roas; }),
+        text: r.map(function (c) { return c.campaign_name + " (" + c.grade + ")"; }),
+        marker: { size: r.map(function (c) { return 8 + Math.sqrt(c.conversions) / 4; }), color: chColour[ch], opacity: 0.8 },
+        hovertemplate: "%{text}<br>Spend %{x:,.0f}<br>ROAS %{y:.2f}x<extra></extra>" };
+    }), layout("Spend vs ROAS (bubble = conversions)", { xaxis: { title: "Spend", gridcolor: css("--line") }, yaxis: { title: "ROAS", gridcolor: css("--line") } }), CFG);
+  }
+
+  // ---------- channels ----------
+  function channels() {
+    var rows = D.channels.filter(inChannel), m = $("chMetric").value;
+    Plotly.react("channelChart", [{ type: "bar", x: rows.map(function (r) { return r.channel; }), y: rows.map(function (r) { return r[m]; }),
+      marker: { color: rows.map(function (r) { return chColour[r.channel]; }) },
+      text: rows.map(function (r) { return FMT[m](r[m]); }), textposition: "outside", hoverinfo: "x+text" }],
+      layout(m.toUpperCase() + " by channel"), CFG);
+    Plotly.react("spendPie", [{ type: "pie", hole: 0.55, labels: rows.map(function (r) { return r.channel; }), values: rows.map(function (r) { return r.spend; }),
+      marker: { colors: rows.map(function (r) { return chColour[r.channel]; }) }, textinfo: "percent", sort: false }],
+      layout("Spend share"), CFG);
+  }
+
+  // ---------- trends ----------
+  function trends() {
+    var k = $("trendKpi").value, byCh = groupBy(D.weekly.filter(inChannel), "channel");
+    Plotly.react("trendChart", Object.keys(byCh).map(function (ch) {
+      var r = byCh[ch];
+      return { type: "scatter", mode: "lines+markers", name: ch, x: r.map(function (w) { return w.week; }), y: r.map(function (w) { return w[k]; }),
+        line: { color: chColour[ch], width: 2 }, marker: { size: 5 } };
+    }), layout("Weekly " + k.toUpperCase() + " by channel", { height: 460 }), CFG);
+  }
+
+  // ---------- anomalies ----------
+  function anomalies() {
+    var rows = D.anomalies.filter(inChannel);
+    $("anomNote").textContent = rows.length + " campaign-days where a KPI is 3.5 or more robust z-scores (median/MAD) away from that campaign's normal.";
+    $("anomTable").innerHTML = "<thead><tr><th>Date</th><th>Campaign</th><th>Channel</th><th>KPI</th><th class='num'>Value</th><th class='num'>Expected</th><th class='num'>z-score</th><th>Likely cause</th></tr></thead><tbody>" +
+      rows.map(function (r) {
+        var f = FMT[r.kpi] || function (v) { return num(v, 2); };
+        return "<tr><td>" + esc(r.date) + "</td><td>" + esc(r.campaign_name || r.campaign_id) + "</td><td>" + esc(r.channel) + "</td><td>" + esc(String(r.kpi).toUpperCase()) +
+          "</td><td class='num'>" + f(r.value) + "</td><td class='num'>" + f(r.expected) + "</td><td class='num " + (r.z_score < 0 ? "neg" : "pos") + "'>" +
+          num(r.z_score, 1) + "</td><td>" + esc(r.likely_cause) + "</td></tr>";
+      }).join("") + "</tbody>";
+  }
+
+  // ---------- budget ----------
+  function budget() {
+    var rows = D.budget.filter(inChannel).slice().sort(function (a, b) { return b.change - a.change; });
+    var spend = sum(rows, "spend"), proj = sum(rows, "projected_revenue");
+    var actual = sum(D.campaigns.filter(inChannel), "revenue");
+    $("budgetTiles").innerHTML = [["Current spend", num(spend)], ["Suggested spend", num(sum(rows, "suggested_budget"))],
+      ["Actual revenue", num(actual)], ["Projected revenue", num(proj) + " <small class='" + (proj >= actual ? "pos" : "neg") + "' style='font-size:13px'>" +
+      (proj >= actual ? "+" : "") + num(proj - actual) + "</small>"]]
+      .map(function (x) { return "<div class='tile'><span>" + x[0] + "</span><b>" + x[1] + "</b></div>"; }).join("");
+    Plotly.react("budgetChart", [{ type: "bar", x: rows.map(function (r) { return r.campaign_id; }), y: rows.map(function (r) { return r.change; }),
+      marker: { color: rows.map(function (r) { return r.change >= 0 ? "#1f9d55" : "#c8322b"; }) },
+      text: rows.map(function (r) { return r.campaign_name + " · " + r.recommendation; }),
+      hovertemplate: "%{text}<br>Change %{y:,.0f}<extra></extra>" }], layout("Budget change per campaign"), CFG);
+    $("budgetTable").innerHTML = "<thead><tr><th>Campaign</th><th>Channel</th><th>Recommendation</th><th class='num'>Current</th><th class='num'>Suggested</th><th class='num'>Change</th><th class='num'>ROAS</th></tr></thead><tbody>" +
+      rows.map(function (r) {
+        return "<tr><td>" + esc(r.campaign_name) + "</td><td>" + esc(r.channel) + "</td><td>" + esc(r.recommendation) + "</td><td class='num'>" + num(r.spend) +
+          "</td><td class='num'>" + num(r.suggested_budget) + "</td><td class='num " + (r.change >= 0 ? "pos" : "neg") + "'>" + (r.change >= 0 ? "+" : "") + num(r.change) +
+          " (" + (r.change_pct >= 0 ? "+" : "") + num(r.change_pct * 100, 0) + "%)</td><td class='num'>" + x2(r.roas) + "</td></tr>";
+      }).join("") + "</tbody>";
+  }
+
+  // ---------- forecast ----------
+  function forecastSetup() {
+    var f = D.forecast;
+    if (!f) { $("modelNote").textContent = "Forecast not included in this export."; return; }
+    $("modelNote").textContent = "Random forest trained on channel, objective, region, day of week, campaign age and lagged efficiency. 14-day time-based holdout: MAE " +
+      f.mae.toFixed(2) + " conversions/day, R² " + f.r2.toFixed(3) + ". Next-day conversions predicted at 0.5× to 2× the campaign's average daily spend.";
+    $("fcCampaign").innerHTML = D.campaigns.map(function (c) {
+      return "<option value='" + esc(c.campaign_id) + "'>" + esc(c.campaign_id + " · " + c.campaign_name) + "</option>";
+    }).join("");
+    var fi = f.feature_importance.slice().reverse();
+    Plotly.react("importanceChart", [{ type: "bar", orientation: "h", x: fi.map(function (r) { return r.importance; }),
+      y: fi.map(function (r) { return r.feature.replace(/^(num|cat)__/, ""); }), marker: { color: "#2f6fdf" } }],
+      layout("Top feature importances", { margin: { l: 170, r: 16, t: 48, b: 40 } }), CFG);
+  }
+  function forecast() {
+    if (!D.forecast) return;
+    var rows = D.forecast.what_if[$("fcCampaign").value] || [];
+    Plotly.react("whatIfChart", [
+      { type: "bar", name: "Predicted conversions", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_conversions; }), marker: { color: "#f5821f" } },
+      { type: "scatter", mode: "lines+markers", name: "Predicted CPA", yaxis: "y2", x: rows.map(function (r) { return r.spend; }), y: rows.map(function (r) { return r.predicted_cpa; }), line: { color: css("--ink") } }
+    ], layout("What-if: next-day conversions vs spend", {
+      xaxis: { title: "Daily spend", type: "category", gridcolor: css("--line") }, yaxis: { title: "Conversions", gridcolor: css("--line") },
+      yaxis2: { title: "CPA", overlaying: "y", side: "right", showgrid: false } }), CFG);
+    $("whatIfTable").innerHTML = "<thead><tr><th class='num'>Daily spend</th><th class='num'>Predicted conversions</th><th class='num'>Predicted CPA</th></tr></thead><tbody>" +
+      rows.map(function (r) { return "<tr><td class='num'>" + num(r.spend, 2) + "</td><td class='num'>" + num(r.predicted_conversions, 1) + "</td><td class='num'>" + num(r.predicted_cpa, 2) + "</td></tr>"; }).join("") + "</tbody>";
+  }
+
+  // ---------- helpers & wiring ----------
+  function groupBy(rows, k) { var o = {}; rows.forEach(function (r) { (o[r[k]] = o[r[k]] || []).push(r); }); return o; }
+  function sum(rows, k) { return rows.reduce(function (a, r) { return a + (r[k] || 0); }, 0); }
+
+  var current = "score";
+  var RENDER = { score: scorecard, channels: channels, trends: trends, anomalies: anomalies, budget: budget, forecast: forecast };
+  function renderAll() { tiles(); RENDER[current](); }
+
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      current = t.dataset.tab;
+      document.querySelectorAll(".tab").forEach(function (o) { o.setAttribute("aria-selected", String(o === t)); });
+      document.querySelectorAll(".panel-tab").forEach(function (p) { p.hidden = p.id !== "tab-" + current; });
+      RENDER[current]();
+      window.dispatchEvent(new Event("resize"));  // let Plotly size charts that were hidden
+    });
+  });
+  $("chMetric").addEventListener("change", channels);
+  $("trendKpi").addEventListener("change", trends);
+  $("fcCampaign").addEventListener("change", forecast);
+
+  fetch("data.json").then(function (r) { if (!r.ok) throw new Error("Could not load results (" + r.status + ")"); return r.json(); })
+    .then(function (data) {
+      D = data;
+      var chs = D.channels.map(function (c) { return c.channel; });
+      chs.forEach(function (c, i) { chColour[c] = PALETTE[i % PALETTE.length]; active.add(c); });
+      chs.forEach(function (c) {
+        var b = document.createElement("button");
+        b.className = "pill"; b.textContent = c; b.setAttribute("aria-pressed", "true");
+        b.addEventListener("click", function () {
+          if (active.has(c) && active.size === 1) return;  // keep at least one channel selected
+          active.has(c) ? active.delete(c) : active.add(c);
+          b.setAttribute("aria-pressed", String(active.has(c)));
+          renderAll();
+        });
+        $("filters").appendChild(b);
+      });
+      $("meta").textContent = D.period.start + " to " + D.period.end + " · " + D.period.campaigns + " campaigns · " + D.period.channels +
+        " channels · target ROAS " + D.target_roas + "x · output of the Python pipeline (sample data)";
+      forecastSetup();
+      renderAll();
+      document.body.setAttribute("data-ready", "1");
+    })
+    .catch(function (e) { $("meta").textContent = e.message; });
+})();
+</script>
+</body>
+</html>
